@@ -32,6 +32,9 @@ darkModeToggle.addEventListener("click", () => {
 });
 // End of Dark Mode Codes -------------------------------------------------------
 
+
+
+
 document.addEventListener("DOMContentLoaded", function() {
     const uploadBtn = document.getElementById("uploadBtn");
     const uploadInput = document.getElementById("uploadInput");
@@ -64,28 +67,79 @@ document.addEventListener("DOMContentLoaded", function() {
     function renderPlaylist(songs) {
         songList.innerHTML = ""; // Clear the list before re-rendering
         songs.forEach((song, index) => {
-            const artist = song.artist ? song.artist : "Unknown Artiste"; // Ensure artist name
+            const artist = song.artist ? song.artist : "Unknown Artist"; 
             const songItem = document.createElement("li");
             songItem.classList.add("songItem");
+            songItem.setAttribute("data-index", index);
+    
             songItem.innerHTML = `
-                <span>${index + 1}</span> <!-- Dynamic numbering -->
+                <span>${index + 1}</span> 
                 <img src="img/vibes stream.png" alt="${song.title}">
                 <h5>${song.title}
                     <div class="subtitle">${artist}</div>
                 </h5>
-                <i class="bi playListPlay bi-play-circle-fill" id="${index}"></i>
+                <i class="bi playListPlay bi-play-circle-fill" id="${index}" onclick="playSong(${index})"></i>
+    
+                <!-- Delete Button -->
+                <i class="bi bi-trash-fill delete-song" id="delete-${index}" data-index="${index}"></i>
             `;
+    
             songList.appendChild(songItem);
+        });
+    
+    // Play next song when the current song ends
+    songPlayer.addEventListener("ended", () => {
+    playSong(currentSongIndex + 1);
+    });
+
+
+        // Attach event listeners to delete buttons
+        document.querySelectorAll(".delete-song").forEach(button => {
+            button.addEventListener("click", function() {
+                const index = parseInt(this.getAttribute("data-index"));
+                deleteSong(index);
+            });
         });
     }
     
+    async function deleteSong(index) {
+        const songToDelete = songs[index]; // Get song object
+        if (!songToDelete) return;
+    
+        try {
+            // Send DELETE request to backend using song title
+            const response = await fetch(`${API_URL}/songs/delete/${encodeURIComponent(songToDelete.title)}`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" }
+            });
+    
+            if (!response.ok) {
+                throw new Error("Failed to delete song from backend");
+            }
+    
+            // Remove song from the local array
+            songs.splice(index, 1);
+    
+            // Re-render playlist
+            renderPlaylist(songs);
+    
+            console.log(`Song deleted: ${songToDelete.title}`);
+        } catch (error) {
+            console.error("Error deleting song:", error);
+        }
+    }
+
+    document.querySelectorAll('.delete-song').forEach(button => {
+        button.addEventListener('click', function() {
+            this.closest('.songItem').remove(); // Remove the song item
+        });
+    });
     
 
     const nowPlayingPlay = document.getElementById("nowPlayingPlay");
     const nowPlayingTitle = document.getElementById("nowPlayingTitle");
     const nowPlayingArtist = document.getElementById("nowPlayingArtist");
-    
-    const highlightColor = "#ffc800"; // Color for highlighting the current song
+    const highlightColor = "#ffc800";
     
     function playSong(index) {
         if (index < 0) {
@@ -152,9 +206,17 @@ document.addEventListener("DOMContentLoaded", function() {
             nowPlayingPlay.classList.replace("bi-pause-circle-fill", "bi-play-circle-fill");
         }
     });
+
+    // Event listeners for playlist song clicks
+    songList.addEventListener("dblclick", (e) => {
+        const songItem = e.target.closest(".songItem");
+        if (songItem) {
+            const songIndex = parseInt(songItem.getAttribute("data-index"));
+            playSong(songIndex);
+        }
+    });
     
-    
-    
+
     // Previous Button Click
     prevBtn.addEventListener("click", () => {
         playSong(currentSongIndex - 1); // Play previous song
@@ -207,28 +269,56 @@ document.addEventListener("DOMContentLoaded", function() {
     uploadBtn.addEventListener("click", () => {
         uploadInput.click();
     });
-
+    
     uploadInput.addEventListener("change", async (e) => {
-        const file = e.target.files[0];
-        const formData = new FormData();
-        formData.append("file", file);
-
-        try {
-            const response = await fetch(`${API_URL}/upload`, {
-                method: "POST",
-                body: formData,
-            });
-            const result = await response.json();
-            if (result.error) {
-                alert(result.error);
-            } else {
-                alert("Song uploaded successfully!");
-                loadSongs(); // Reload the song list after uploading
-            }
-        } catch (error) {
-            console.error("Error uploading file:", error);
+        const files = e.target.files;
+        if (files.length === 0) return;
+    
+        // Show progress bar
+        document.getElementById("progressWrapper").style.display = "block";
+    
+        let uploadedCount = 0;
+    
+        for (const file of files) {
+            const formData = new FormData();
+            formData.append("file", file);
+    
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", `${API_URL}/upload`, true);
+    
+            // Track Upload Progress
+            xhr.upload.onprogress = function (event) {
+                if (event.lengthComputable) {
+                    let percentComplete = Math.round((event.loaded / event.total) * 100);
+                    document.getElementById("progressBar").style.width = percentComplete + "%";
+                    document.getElementById("progressText").innerText = percentComplete + "%";
+                }
+            };
+    
+            // When upload completes
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    uploadedCount++;
+                    if (uploadedCount === files.length) {
+                        document.getElementById("progressText").innerText = "Upload Complete!";
+                        setTimeout(() => {
+                            document.getElementById("progressWrapper").style.display = "none";
+                            document.getElementById("progressBar").style.width = "0%"; // Reset
+                            document.getElementById("progressText").innerText = "0%";
+                        }, 2000);
+                        loadSongs(); // Reload song list
+                    }
+                } else {
+                    alert("Upload failed. Please try again.");
+                    document.getElementById("progressWrapper").style.display = "none";
+                }
+            };
+    
+            xhr.send(formData);
         }
     });
+    
+
 
     // Event listeners for playlist song clicks
     songList.addEventListener("click", (e) => {
@@ -264,3 +354,32 @@ document.addEventListener("DOMContentLoaded", function() {
     // Initialize
     loadSongs(); // Load songs on page load
 });
+
+
+
+//slide show
+const slides = document.querySelectorAll('.slide');
+let currentIndex = 0;
+
+function changeSlide() {
+    slides[currentIndex].classList.remove('active');
+    currentIndex = (currentIndex + 1) % slides.length;
+    slides[currentIndex].classList.add('active');
+}
+
+// Change slide every 5 seconds
+setInterval(changeSlide, 5000);
+
+
+//Wave Animation
+const svgWave = document.getElementById("svgWave");
+
+function toggleWaveAnimation(isPlaying) {
+    svgWave.style.display = isPlaying ? "block" : "none";
+}
+
+songPlayer.addEventListener("play", () => toggleWaveAnimation(true));
+songPlayer.addEventListener("pause", () => toggleWaveAnimation(false));
+songPlayer.addEventListener("ended", () => toggleWaveAnimation(false));
+
+
